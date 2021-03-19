@@ -28,7 +28,6 @@
       "email": "mr.alireza.eb@gmail.com"
     }
   ],
-  "minimum-stability": "stable",
   "require-dev": {
     "orchestra/testbench": "6.0"
   }

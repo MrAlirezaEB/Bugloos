@@ -22,10 +22,10 @@
         <div class="tb_search" style="display: flex">
           <select class  ="form-control" name="blt_search_source">
             @foreach ($table->header->columns as $item)
-            @if (isset($item['searchable']) && $item['searchable'])
-            <option value="{{$item['source']}}" @if (request()->blt_search_source == $item['source'])
+            @if (isset($item->searchable) && $item->searchable)
+            <option value="{{$item->source}}" @if (request()->blt_search_source == $item->source)
               selected
-          @endif>{{$item['name']}}</option>
+          @endif>{{$item->name}}</option>
             @endif
             @endforeach
             
@@ -44,10 +44,10 @@
 <tr>
   @foreach ($table->header->columns as $item)
   <th>
-    @if (isset($item['sortable']) && $item['sortable'])
-    <a href="{{ request()->fullUrlWithQuery(['blt_sort_by' => $item['source']]) }}">{{$item['name']}}</a>
+    @if (isset($item->sortable) && $item->sortable)
+    <a href="{{ request()->fullUrlWithQuery(['blt_sort_by' => $item->source]) }}">{{$item->name}}</a>
     @else
-    {{$item['name']}}
+    {{$item->name}}
     @endif
   </th>
   @endforeach
@@ -58,7 +58,7 @@
   @foreach ($table->rows as $item)
     <tr>
       @foreach ($table->header->columns as $header)
-    <td>{{$item[$header['source']]}}</td>
+    <td>{{$item[$header->source]}}</td>
     @endforeach
   </tr>
   @endforeach

@@ -3,6 +3,7 @@
 namespace MrAlirezaEb\BugloosTest;
 
 use Illuminate\Support\ServiceProvider;
+use MrAlirezaEb\BugloosTest\Console\{MakeBLHeaderCommand , InitialBLHeader};
 
 class BugloosTestServiceProvider extends ServiceProvider
 {
@@ -24,7 +25,14 @@ class BugloosTestServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/config.php' => config_path('bltable.php'),
         ], 'config');
+
+        $this->commands([
+          MakeBLHeaderCommand::class,
+          InitialBLHeader::class
+      ]);
+        
     }
     $this->loadViewsFrom(__DIR__.'/../resources/views', 'bltable');
+    $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
   }
 }

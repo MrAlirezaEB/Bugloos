@@ -1,0 +1,42 @@
+<?php
+
+namespace DummyNamespace;
+
+use MrAlirezaEb\BugloosTest\CreateBLHeader;
+use MrAlirezaEb\BugloosTest\BLHeader;
+use MrAlirezaEb\BugloosTest\BLHeaderColumn;
+use MrAlirezaEb\BugloosTest\Models\BLHeaderSchema;
+
+class DummyClass implements CreateBLHeader
+{
+    public const SLUG = 'DummyClass';
+    public static function create()
+    {
+        // create basic header
+        $new = new BLHeader("you're title");
+        $new->dynamic = false; // true : stores client changes | false : static mode
+        $new->sort_by = 'source_name';
+        $new->count_per_page = 10;
+        // add columns to header
+        $new->addColumn(BLHeaderColumn::make('name','source'));
+        // or
+        $new->addColumn(new BLHeaderColumn(
+            $name = 'name', // name of column
+            $source = 'source_name', // source name of column in collection
+            $type = 'type', // column type e.g: string , int , ...
+            $width = 50, // percentage of column width between 0-100
+            $searchable = true,
+            $sortable = true
+        ));
+
+
+        // stores schema in database
+        $new->store(self::SLUG);
+    }
+
+    public static function drop()
+    {
+        $header = BLHeaderSchema::where('slug' , self::SLUG);
+        $header->delete();
+    }
+}

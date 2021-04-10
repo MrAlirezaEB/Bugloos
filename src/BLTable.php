@@ -13,9 +13,15 @@ namespace MrAlirezaEb\BugloosTest;
 use Exception;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
+use MrAlirezaEb\BugloosTest\Traits\SortHelper;
+use MrAlirezaEb\BugloosTest\BLHeader;
+use MrAlirezaEb\BugloosTest\BLHeaderColumn;
+use MrAlirezaEb\BugloosTest\BLMeta;
 
 class BLTable
 {
+    use SortHelper;
+
     protected $rows;
     protected $header;
     protected $meta;
@@ -27,8 +33,7 @@ class BLTable
     protected $count_per_page;
 
 
-
-    public function __construct( array $header , $data=null , array $meta=null)
+    public function __construct( BLHeader $header , $data=null , array $meta=null)
     {
         $this->setHeader($header);
         $this->setRows($data);
@@ -36,16 +41,19 @@ class BLTable
         $this->search();
         $this->sortBy();
         $this->count = count($this->rows);
-        $this->count_per_page = count($this->rows);
+        $this->count_per_page = $this->header->count_per_page ? $this->header->count_per_page : count($this->rows);
         $this->current_page = 1;
-        $this->pages = 1;
+        $this->pages = $this->header->count_per_page ? ceil($this->count/$this->count_per_page*1.0) : 1;
+        $this->paginate();
         if(request()->has('blt_count_per_page'))
         {
             $this->count_per_page = intval(request()->blt_count_per_page);
+            $this->headerUpdate('count_per_page');
         }
     }
 
     // public methods ---------------------------------------------------------------------
+
     /**
      * public method
      * this method return final result as json 
@@ -70,17 +78,7 @@ class BLTable
      */
     public function show()
     {
-        $table = (object) [
-            'header'=>$this->header,
-            'rows'=>$this->rows,
-            'meta'=>$this->meta,
-            'pages'=>$this->pages,
-            'current_page'=>$this->current_page,
-            'sort_by'=>$this->sort_by,
-            'order'=>$this->order,
-            'count'=>$this->count,
-            'count_per_page'=>$this->count_per_page,
-        ];
+        $table = $this->toJSON();
 
         $html = view('bltable::bltable.table')->with([
             'table'=>$table,
@@ -92,14 +90,26 @@ class BLTable
      * public method
      * this method return final result as json 
      */
-    public function paginate(int $count)
+    public function paginate(int $count = null)
     {
-        if(request()->has('blt_count_per_page'))
+        // checks if there is a count per page filter
+        if(!$count) # non-strict pagination
         {
-            $count = request()->blt_count_per_page;
+            if(request()->has('blt_count_per_page'))
+            {
+                $count = request()->blt_count_per_page;
+            }
+            elseif($this->header->count_per_page > 0)
+            {
+                $count = $this->header->count_per_page;
+            }
         }
+        
         $this->count_per_page = $count;
+        $this->headerUpdate('count_per_page');
         $this->pages = ceil($this->count/$this->count_per_page*1.0);
+
+        // checks current page
         if(request()->has('blt_page') && request()->blt_page !='')
         {
             $this->current_page = request()->blt_page;
@@ -126,11 +136,11 @@ class BLTable
         {
             foreach($this->header->columns as $col)
             {
-                if($col['source']==$source)
+                if($col->source==$source)
                 {
                     foreach($rows as $item)
                     {
-                        if(strpos($item[$source] , $search))
+                        if(strpos($item->$source , $search))
                         {
                             array_push($arr , $item);
                         }
@@ -138,7 +148,7 @@ class BLTable
                 }
             }
             $this->rows = (object) $arr;
-        }
+        }       
     }
 
     /**
@@ -147,18 +157,19 @@ class BLTable
      */
     private function sortBy()
     {
-        $source = request()->blt_sort_by;
+        $source = request()->blt_sort_by ? request()->blt_sort_by : $this->header->sort_by;
         $order = request()->blt_order;
         $rows = (array) $this->rows;
         foreach($this->header->columns as $col)
         {
-            if($col['source']==$source)
+            if($col->source==$source)
             {
                 $this->sortBySubArrayValue($rows , $source);   
             }
         }
         $this->rows = $rows;
         $this->sort_by = $source;
+        $this->headerUpdate('sort_by');
         $this->order = $order;
     }
 
@@ -168,10 +179,7 @@ class BLTable
      */
     private function setHeader($header)
     {
-        if($this->headerValidator($header))
-        {
-            $this->header = (object) $header;
-        }
+        $this->header = $header;
     }
 
     /**
@@ -189,28 +197,11 @@ class BLTable
                 break;
                 // for test case Eloquent\Collection is a good choice (just considered laravel models)
                 case "object":
-                    if(get_class($data)=="Illuminate\Database\Eloquent\Collection")
-                    {
-                        $rows = $this->initRows($data);
-                    }
-                    else{
-                        throw new Exception('not valid class for data, data only accepts "Illuminate\Database\Eloquent\Collection" : '.get_class($data));
-                    }
+                    $this->setDataAsObject($data);
                 break;
                 // will be used in case of third-party APIs
                 case "array":
-                    if(isset($data['url']))
-                    {
-                        $client = new Client(); #this package (GuzzleHttp) is better than file_get_contents or cURL libs
-                        $response = $client->request(isset($data['method']) ? $data['method'] : 'GET', $data['url'] ,['header'=>['Accept'=>'application/json']]); #for test case I prefer to get a json response but in future it can get developed in other ways
-                        $body = $response->getBody();
-                        $result = json_decode($body, true);
-                        $rows = $this->initRows($result);
-                        $this->rows = $rows;
-                    }
-                    else{
-                        throw new Exception('not valid data : url most be set');
-                    }
+                    $this->setDataAsURL($data);
                 break;
             } 
         }
@@ -234,41 +225,6 @@ class BLTable
         }
     }
 
-    /**
-     * private method
-     * this method is for validating header array values and keys 
-     */
-    private function headerValidator($header) : bool
-    {
-        //checks correct keys for header
-        foreach(array_keys($header) as $key)
-        {
-            if(!in_array($key,['title','columns']))
-            {
-                throw new Exception("header is not valid : this key is unusable '$key'");
-            }
-        }
-        if(isset($header['columns']) && !empty($header['columns']))
-        {
-            if(gettype($header['columns'])!='array')
-            {
-                throw new Exception(`header is not valid : columns is array`);
-            }
-            foreach($header['columns'] as $column)
-            {
-                foreach(array_keys($column) as $key)
-                {
-                    if(!in_array($key,['type','name','source' , 'width' , 'searchable' , 'sortable']))
-                    {
-                        throw new Exception("header is not valid : this key is unusable '$key'");
-                    }
-                }
-            }
-        }
-        
-
-        return true;
-    }
 
     /**
      * private method
@@ -282,14 +238,14 @@ class BLTable
             $index = [];
             foreach($this->header->columns as $col)
             {
-                if(isset($row[$col['source']]))
+                if(isset($row[$col->source]))
                 {
-                    $value = $row[$col['source']];
-                    isset($col['type']) ? settype($value , $col['type']) : $value;
-                    $index[$col['source']] = $value;
+                    $value = $row[$col->source];
+                    isset($col->type) ? settype($value , $col->type) : $value;
+                    $index[$col->source] = $value;
                 }
                 else{
-                    $index[$col['source']] = null;
+                    $index[$col->source] = null;
                 }
             }
             array_push($arr,$index);
@@ -299,26 +255,51 @@ class BLTable
 
     /**
      * private method
-     * this method will be used to sort datas
+     * this method will be used to set datas as object
      */
-    private function sortBySubArrayValue(&$array, $key, $dir='asc') {
- 
-        $sorter=array();
-        $rebuilt=array();
-        //make sure we start at the beginning of $array
-        reset($array);
-     
-        foreach($array as $i => $value) {
-          $sorter[$i]=$value[$key];
+    private function setDataAsObject($data)
+    {
+        if(get_class($data)=="Illuminate\Database\Eloquent\Collection")
+        {
+            $rows = $this->initRows($data);
+            $this->rows = $rows;
         }
-        //sort the built array of key values
-        if ($dir == 'asc') asort($sorter);
-        if ($dir == 'desc') arsort($sorter);
-        //build the returning array and add the other values associated with the key
-        foreach($sorter as $i => $value) {
-          $rebuilt[$i]=$array[$i];
+        else{
+            throw new Exception('not valid class for data, data only accepts "Illuminate\Database\Eloquent\Collection" : '.get_class($data));
         }
-     
-        $array=$rebuilt;
-      }
+    }
+
+    /**
+     * private method
+     * this method will be used to set datas from url response
+     */
+    private function setDataAsURL($data)
+    {
+        if(isset($data['url']))
+        {
+            $client = new Client(); #this package (GuzzleHttp) is better than file_get_contents or cURL libs
+            $response = $client->request(isset($data['method']) ? $data['method'] : 'GET', $data['url'] ,['header'=>['Accept'=>'application/json']]); #for test case I prefer to get a json response but in future it can get developed in other ways
+            $body = $response->getBody();
+            $result = json_decode($body, true);
+            $rows = $this->initRows($result);
+            $this->rows = $rows;
+        }
+        else{
+            throw new Exception('not valid data : url most be set');
+        }
+    }
+
+    /**
+     * private method
+     * this method will be used to update header if it is dynamic
+     */
+    public function headerUpdate($prop)
+    {
+        //check if header is dymanic so prop should update
+        if($this->header->dynamic)
+        {
+            $this->header->$prop = $this->$prop;
+            $this->header->update();
+        }
+    }
 }
